@@ -1,3 +1,15 @@
+// ==UserScript==
+// @name         Royal Filter
+// @namespace    http://tampermonkey.net/
+// @version      1.0
+// @description  Filtro de turmas para o Letzplay - Royal Tênis Clube
+// @author       Riquelme
+// @match        https://letzplay.me/places/royal/schedules/by_day/*
+// @updateURL    https://raw.githubusercontent.com/joaoriquelmee/royal-filter/main/filter.user.js
+// @downloadURL  https://raw.githubusercontent.com/joaoriquelmee/royal-filter/main/filter.user.js
+// @grant        none
+// ==/UserScript==
+
 (function () {
 
   const LIMITE_FIXOS = 4;
