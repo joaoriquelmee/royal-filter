@@ -2,6 +2,7 @@
 // @name         Royal Filter
 // @namespace    http://tampermonkey.net/
 // @version      1.2
+// @version      1.1
 // @description  Filtro de turmas para o Letzplay - Royal Tênis Clube
 // @author       Riquelme
 // @match        https://letzplay.me/places/royal/schedules/by_day/*/*
