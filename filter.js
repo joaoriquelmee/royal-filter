@@ -1,3 +1,16 @@
+// ==UserScript==
+// @name         Royal Filter
+// @namespace    http://tampermonkey.net/
+// @version      1.2
+// @description  Filtro de turmas para o Letzplay - Royal Tênis Clube
+// @author       Riquelme
+// @match        https://letzplay.me/places/royal/schedules/by_day/*/*
+// @match        https://letzplay.me/places/royal/schedules/by_day/*
+// @updateURL    https://raw.githubusercontent.com/joaoriquelmee/royal-filter/main/filter.user.js
+// @downloadURL  https://raw.githubusercontent.com/joaoriquelmee/royal-filter/main/filter.user.js
+// @grant        none
+// ==/UserScript==
+
 (function () {
 
   const LIMITE_FIXOS = 4;
@@ -266,135 +279,182 @@
       box-shadow: 0 6px 24px rgba(0,0,0,0.5);
       max-height: 85vh; overflow-y: auto;
       scrollbar-width: thin; scrollbar-color: #3d5a73 #1e2d3d;
+      cursor: default;
     `;
 
     const header = `
-      <div style="text-align:center;margin-bottom:12px">
-        <div style="font-size:17px;font-weight:700;letter-spacing:1px">👑 Royal Filter</div>
-        <div style="font-size:10px;color:#f39c12;margin-top:2px">⚠️ Em desenvolvimento</div>
+      <div id="rf-header" style="display:flex;align-items:center;justify-content:space-between;cursor:grab;user-select:none;padding-bottom:8px">
+        <span style="font-size:15px;font-weight:700;letter-spacing:1px">👑 Royal Filter</span>
+        <button id="rf-btn-minimizar" style="
+          background:none;border:1px solid #3d5a73;color:#95a5a6;
+          border-radius:5px;padding:1px 7px;cursor:pointer;font-size:11px;
+          line-height:1.4;flex-shrink:0;
+        ">▼</button>
       </div>
-      <hr style="border-color:rgba(255,255,255,0.1);margin-bottom:12px">
+      <div id="rf-subtitulo" style="text-align:center;font-size:10px;color:#f39c12;margin-bottom:12px">⚠️ Em desenvolvimento</div>
+      <hr id="rf-hr-header" style="border-color:rgba(255,255,255,0.1);margin-bottom:12px">
     `;
 
     const secaoFiltros = `
-      <div style="font-size:11px;font-weight:600;text-transform:uppercase;
-                  color:#95a5a6;margin-bottom:8px;letter-spacing:.5px">Visualização</div>
-
-      <label style="display:flex;align-items:center;gap:8px;margin-bottom:8px;cursor:pointer">
-        <input type="checkbox" id="rf-chk-vaga" style="accent-color:#27ae60;width:14px;height:14px;flex-shrink:0">
-        <span style="white-space:nowrap;font-size:12px">Turmas com vagas ✅</span>
-      </label>
-
-      <label style="display:flex;align-items:center;gap:8px;margin-bottom:8px;cursor:pointer">
-        <input type="checkbox" id="rf-chk-exp" style="accent-color:#8e44ad;width:14px;height:14px;flex-shrink:0">
-        <span style="white-space:nowrap;font-size:12px">Aulas com Experimentais 🧪</span>
-      </label>
-
-      <label style="display:flex;align-items:center;gap:8px;margin-bottom:8px;cursor:pointer">
-        <input type="checkbox" id="rf-chk-locacao" style="accent-color:#e67e22;width:14px;height:14px;flex-shrink:0">
-        <span style="white-space:nowrap;font-size:12px">Horários para Locação 🤑</span>
-      </label>
-
-      <hr style="border-color:rgba(255,255,255,0.1);margin:12px 0">
-    `;
-
-    const checksProfessores = professores.map(prof => `
-      <label style="display:flex;align-items:center;gap:8px;margin-bottom:6px;cursor:pointer">
-        <input type="checkbox" class="rf-chk-prof" value="${prof}"
-               style="accent-color:#2980b9;width:14px;height:14px">
-        <span style="font-size:12px">${prof}</span>
-      </label>
-    `).join('');
-
-    const secaoProfessores = `
-      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
+      <div id="rf-corpo">
         <div style="font-size:11px;font-weight:600;text-transform:uppercase;
-                    color:#95a5a6;letter-spacing:.5px">Por Professor</div>
-        <button id="rf-btn-toggle-profs" style="
-          background:none;border:1px solid #3d5a73;color:#95a5a6;
-          border-radius:5px;padding:2px 7px;cursor:pointer;font-size:11px;
-        ">▲ Ocultar</button>
-      </div>
-      <div id="rf-lista-profs">${checksProfessores || '<span style="color:#7f8c8d;font-size:11px">Nenhum professor encontrado</span>'}</div>
-      <hr style="border-color:rgba(255,255,255,0.1);margin:12px 0">
-    `;
+                    color:#95a5a6;margin-bottom:8px;letter-spacing:.5px">Visualização</div>
 
-    const secaoContadores = `
-      <div style="font-size:11px;font-weight:600;text-transform:uppercase;
-                  color:#95a5a6;margin-bottom:8px;letter-spacing:.5px">
-        RESUMO DO DIA ${data}
-      </div>
-      <div id="rf-contadores" style="font-size:12px;line-height:1.8">—</div>
-      <hr style="border-color:rgba(255,255,255,0.1);margin:12px 0">
-    `;
+        <label style="display:flex;align-items:center;gap:8px;margin-bottom:8px;cursor:pointer">
+          <input type="checkbox" id="rf-chk-vaga" style="accent-color:#27ae60;width:14px;height:14px;flex-shrink:0">
+          <span style="white-space:nowrap;font-size:12px">Turmas com vagas ✅</span>
+        </label>
 
-    const secaoRelatorio = `
-      <div style="font-size:11px;font-weight:600;text-transform:uppercase;
-                  color:#95a5a6;margin-bottom:8px;letter-spacing:.5px">Relatório de Presença</div>
+        <label style="display:flex;align-items:center;gap:8px;margin-bottom:8px;cursor:pointer">
+          <input type="checkbox" id="rf-chk-exp" style="accent-color:#8e44ad;width:14px;height:14px;flex-shrink:0">
+          <span style="white-space:nowrap;font-size:12px">Aulas com Experimentais 🧪</span>
+        </label>
 
-      <div style="display:flex;gap:6px;margin-bottom:8px">
-        <button id="rf-btn-manha" style="
-          flex:1;padding:7px 4px;
-          background:#2980b9;border:none;color:white;
-          border-radius:7px;cursor:pointer;font-size:11px;font-weight:bold">
-          🌅 Manhã
+        <label style="display:flex;align-items:center;gap:8px;margin-bottom:8px;cursor:pointer">
+          <input type="checkbox" id="rf-chk-locacao" style="accent-color:#e67e22;width:14px;height:14px;flex-shrink:0">
+          <span style="white-space:nowrap;font-size:12px">Horários para Locação 🤑</span>
+        </label>
+
+        <hr style="border-color:rgba(255,255,255,0.1);margin:12px 0">
+
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
+          <div style="font-size:11px;font-weight:600;text-transform:uppercase;
+                      color:#95a5a6;letter-spacing:.5px">Por Professor</div>
+          <button id="rf-btn-toggle-profs" style="
+            background:none;border:1px solid #3d5a73;color:#95a5a6;
+            border-radius:5px;padding:2px 7px;cursor:pointer;font-size:11px;
+          ">▲ Ocultar</button>
+        </div>
+        <div id="rf-lista-profs">${professores.map(prof => `
+          <label style="display:flex;align-items:center;gap:8px;margin-bottom:6px;cursor:pointer">
+            <input type="checkbox" class="rf-chk-prof" value="${prof}"
+                   style="accent-color:#2980b9;width:14px;height:14px">
+            <span style="font-size:12px">${prof}</span>
+          </label>
+        `).join('') || '<span style="color:#7f8c8d;font-size:11px">Nenhum professor encontrado</span>'}</div>
+
+        <hr style="border-color:rgba(255,255,255,0.1);margin:12px 0">
+
+        <div style="font-size:11px;font-weight:600;text-transform:uppercase;
+                    color:#95a5a6;margin-bottom:8px;letter-spacing:.5px">
+          RESUMO DO DIA ${data}
+        </div>
+        <div id="rf-contadores" style="font-size:12px;line-height:1.8">—</div>
+
+        <hr style="border-color:rgba(255,255,255,0.1);margin:12px 0">
+
+        <div style="font-size:11px;font-weight:600;text-transform:uppercase;
+                    color:#95a5a6;margin-bottom:8px;letter-spacing:.5px">Relatório de Presença</div>
+
+        <div style="display:flex;gap:6px;margin-bottom:8px">
+          <button id="rf-btn-manha" style="
+            flex:1;padding:7px 4px;
+            background:#2980b9;border:none;color:white;
+            border-radius:7px;cursor:pointer;font-size:11px;font-weight:bold">
+            🌅 Manhã
+          </button>
+          <button id="rf-btn-tarde" style="
+            flex:1;padding:7px 4px;
+            background:#e67e22;border:none;color:white;
+            border-radius:7px;cursor:pointer;font-size:11px;font-weight:bold">
+            🌆 Tarde
+          </button>
+        </div>
+
+        <textarea id="rf-relatorio-texto" style="
+          width:100%;height:120px;
+          background:#0f1c29;color:#ecf0f1;
+          border:1px solid #3d5a73;border-radius:7px;
+          padding:8px;font-size:10px;font-family:monospace;
+          resize:none;box-sizing:border-box;
+          display:none;
+        " readonly></textarea>
+
+        <button id="rf-btn-copiar" style="
+          width:100%;padding:6px;margin-top:6px;
+          background:#16a085;border:none;color:white;
+          border-radius:7px;cursor:pointer;font-size:11px;font-weight:bold;
+          display:none;
+        ">📋 Copiar texto</button>
+
+        <hr style="border-color:rgba(255,255,255,0.1);margin:12px 0">
+
+        <button id="rf-btn-aplicar" style="
+          width:100%;padding:8px;margin-bottom:6px;
+          background:#27ae60;border:none;color:white;
+          border-radius:7px;cursor:pointer;font-size:12px;font-weight:bold">
+          ▶ Aplicar filtros
         </button>
-        <button id="rf-btn-tarde" style="
-          flex:1;padding:7px 4px;
-          background:#e67e22;border:none;color:white;
-          border-radius:7px;cursor:pointer;font-size:11px;font-weight:bold">
-          🌆 Tarde
+        <button id="rf-btn-restaurar" style="
+          width:100%;padding:8px;
+          background:#c0392b;border:none;color:white;
+          border-radius:7px;cursor:pointer;font-size:12px;font-weight:bold">
+          ↩ Restaurar tudo
         </button>
-      </div>
 
-      <textarea id="rf-relatorio-texto" style="
-        width:100%;height:120px;
-        background:#0f1c29;color:#ecf0f1;
-        border:1px solid #3d5a73;border-radius:7px;
-        padding:8px;font-size:10px;font-family:monospace;
-        resize:none;box-sizing:border-box;
-        display:none;
-      " readonly></textarea>
-
-      <button id="rf-btn-copiar" style="
-        width:100%;padding:6px;margin-top:6px;
-        background:#16a085;border:none;color:white;
-        border-radius:7px;cursor:pointer;font-size:11px;font-weight:bold;
-        display:none;
-      ">📋 Copiar texto</button>
-
-      <hr style="border-color:rgba(255,255,255,0.1);margin:12px 0">
-    `;
-
-    const botoes = `
-      <button id="rf-btn-aplicar" style="
-        width:100%;padding:8px;margin-bottom:6px;
-        background:#27ae60;border:none;color:white;
-        border-radius:7px;cursor:pointer;font-size:12px;font-weight:bold">
-        ▶ Aplicar filtros
-      </button>
-      <button id="rf-btn-restaurar" style="
-        width:100%;padding:8px;
-        background:#c0392b;border:none;color:white;
-        border-radius:7px;cursor:pointer;font-size:12px;font-weight:bold">
-        ↩ Restaurar tudo
-      </button>
-    `;
-
-    const rodape = `
-      <div style="text-align:center;margin-top:14px;font-size:10px;color:#5d7a8a">
-        Desenvolvido por
-        <span id="rf-dev-nome" style="font-weight:700;font-size:11px;letter-spacing:1px;">Riquelme</span>
+        <div style="text-align:center;margin-top:14px;font-size:10px;color:#5d7a8a">
+          Desenvolvido por
+          <span id="rf-dev-nome" style="font-weight:700;font-size:11px;letter-spacing:1px;">Riquelme</span>
+        </div>
       </div>
     `;
 
-    painel.innerHTML = header + secaoFiltros + secaoProfessores + secaoContadores + secaoRelatorio + botoes + rodape;
+    painel.innerHTML = header + secaoFiltros;
     document.body.appendChild(painel);
 
     // ─── Neon ciano fixo ──────────────────────────────────────
     const nomeEl = document.getElementById('rf-dev-nome');
     nomeEl.style.color = '#00f5ff';
     nomeEl.style.textShadow = '0 0 6px #00f5ff, 0 0 12px #00f5ff, 0 0 20px #00c8d4';
+
+    // ─── Minimizar / Expandir ─────────────────────────────────
+    const btnMinimizar = document.getElementById('rf-btn-minimizar');
+    const rfSubtitulo  = document.getElementById('rf-subtitulo');
+    const rfHrHeader   = document.getElementById('rf-hr-header');
+    const rfCorpo      = document.getElementById('rf-corpo');
+    let minimizado = false;
+
+    btnMinimizar.onclick = (e) => {
+      e.stopPropagation();
+      minimizado = !minimizado;
+      rfCorpo.style.display     = minimizado ? 'none' : '';
+      rfSubtitulo.style.display = minimizado ? 'none' : '';
+      rfHrHeader.style.display  = minimizado ? 'none' : '';
+      painel.style.overflowY    = minimizado ? 'hidden' : 'auto';
+      painel.style.maxHeight    = minimizado ? 'none' : '85vh';
+      painel.style.padding      = minimizado ? '10px 16px' : '16px';
+      btnMinimizar.textContent  = minimizado ? '▲' : '▼';
+    };
+
+    // ─── Arrastar painel ──────────────────────────────────────
+    const rfHeader = document.getElementById('rf-header');
+    let arrastando = false, startX, startY, startLeft, startTop;
+
+    rfHeader.addEventListener('mousedown', (e) => {
+      if (e.target === btnMinimizar) return;
+      arrastando = true;
+      startX = e.clientX;
+      startY = e.clientY;
+      const rect = painel.getBoundingClientRect();
+      startLeft = rect.left;
+      startTop  = rect.top;
+      rfHeader.style.cursor = 'grabbing';
+      e.preventDefault();
+    });
+
+    document.addEventListener('mousemove', (e) => {
+      if (!arrastando) return;
+      const dx = e.clientX - startX;
+      const dy = e.clientY - startY;
+      painel.style.right = 'auto';
+      painel.style.left  = `${startLeft + dx}px`;
+      painel.style.top   = `${startTop  + dy}px`;
+    });
+
+    document.addEventListener('mouseup', () => {
+      arrastando = false;
+      rfHeader.style.cursor = 'grab';
+    });
 
     // ─── Toggle lista de professores ──────────────────────────
     const listaProfs = document.getElementById('rf-lista-profs');
