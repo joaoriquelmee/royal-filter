@@ -1,8 +1,7 @@
 // ==UserScript==
 // @name         Royal Filter
 // @namespace    http://tampermonkey.net/
-// @version      1.2
-// @version      1.1
+// @version      1.3
 // @description  Filtro de turmas para o Letzplay - Royal Tênis Clube
 // @author       Riquelme
 // @match        https://letzplay.me/places/royal/schedules/by_day/*/*
@@ -16,6 +15,7 @@
 
   const LIMITE_FIXOS = 4;
   let estadoOriginal = [];
+  let painelMontado = false;
 
   function salvarEstadoOriginal() {
     estadoOriginal = [];
@@ -30,7 +30,6 @@
       const badge = el.querySelector('.badge-vagas-letz');
       if (badge) badge.remove();
     });
-    atualizarContadores(0, 0, 0);
     resetarRelatorio();
   }
 
@@ -149,31 +148,55 @@
     return Array.from(set).sort();
   }
 
-  function adicionarBadge(conteudo, vagasFixas, vagasDia, faltantes) {
+  // ─── Badge compacto ao lado do nome do professor ────────────
+  // Fica entre o <b> do professor e o contador total de alunos
+  // (canto superior direito), um espaço que nunca é ocupado.
+  function adicionarBadge(conteudo, vagasFixas, vagasDia) {
     const antigo = conteudo.querySelector('.badge-vagas-letz');
     if (antigo) antigo.remove();
 
-    const badge = document.createElement('div');
+    let txt = '';
+    let cor = '';
+
+    if (vagasFixas > 0) {
+      txt = `✅ ${vagasFixas} VF`;
+      cor = 'rgba(39,174,96,0.93)';
+    } else if (vagasDia > 0) {
+      txt = `⏳ ${vagasDia} VT`;
+      cor = 'rgba(230,126,34,0.93)';
+    }
+
+    if (!txt) return;
+
+    const badge = document.createElement('span');
     badge.className = 'badge-vagas-letz';
     badge.style.cssText = `
-      position: absolute; bottom: 3px; left: 0; right: 0;
-      text-align: center; font-size: 10px; font-weight: bold;
-      color: #fff; background: rgba(0,0,0,0.38);
-      padding: 2px 4px; border-radius: 3px;
-      margin: 0 4px; line-height: 1.5; pointer-events: none;
+      display: inline-block;
+      font-size: 8px; font-weight: bold;
+      color: #fff; background: ${cor};
+      padding: 1px 3px; border-radius: 3px;
+      line-height: 1.3; pointer-events: none;
+      margin-left: 4px; vertical-align: middle;
+      white-space: nowrap;
     `;
-
-    let txt = '';
-    if (vagasFixas > 0 && faltantes > 0)
-      txt = `✅ ${vagasFixas} vaga${vagasFixas > 1 ? 's' : ''} fixa${vagasFixas > 1 ? 's' : ''} + ${faltantes} só no dia`;
-    else if (vagasFixas > 0)
-      txt = `✅ ${vagasFixas} vaga${vagasFixas > 1 ? 's' : ''} fixa${vagasFixas > 1 ? 's' : ''}`;
-    else if (vagasDia > 0)
-      txt = `📅 ${vagasDia} vaga${vagasDia > 1 ? 's' : ''} só no dia`;
-
     badge.textContent = txt;
-    conteudo.style.position = 'relative';
-    conteudo.appendChild(badge);
+
+    const negrito = conteudo.querySelector('.schedule-event-content-many-people b, span > b');
+    if (negrito) {
+      const brInterno = negrito.querySelector('br');
+      if (brInterno) {
+        brInterno.insertAdjacentElement('beforebegin', badge);
+      } else {
+        negrito.appendChild(badge);
+      }
+    } else {
+      // Fallback: caso não encontre o <b>, usa a posição antiga
+      badge.style.position = 'absolute';
+      badge.style.bottom = '1px';
+      badge.style.left = '1px';
+      conteudo.style.position = 'relative';
+      conteudo.appendChild(badge);
+    }
   }
 
   function aplicarFiltros() {
@@ -186,10 +209,12 @@
       document.querySelectorAll('.rf-chk-prof:checked')
     ).map(el => el.value);
     const filtraProfessor = professoresSelecionados.length > 0;
+    const horasSelecionadas = Array.from(
+      document.querySelectorAll('.rf-pill-hora.ativa')
+    ).map(el => parseInt(el.dataset.hora));
+    const filtraHorario = horasSelecionadas.length > 0;
 
-    if (!mostrarComVaga && !mostrarExperimental && !mostrarLocacao && !filtraProfessor) return;
-
-    let comVaga = 0, semVaga = 0, experimentais = 0, locacoesDisp = 0;
+    if (!mostrarComVaga && !mostrarExperimental && !mostrarLocacao && !filtraProfessor && !filtraHorario) return;
 
     document.querySelectorAll('.schedule-event').forEach(evento => {
       const conteudo = evento.querySelector('.schedule-event-content');
@@ -198,8 +223,7 @@
       const eLocacao = conteudo.classList.contains('schedule-cluborlocation');
 
       if (mostrarLocacao) {
-        if (eLocacao) { evento.style.display = ''; locacoesDisp++; }
-        else evento.style.display = 'none';
+        evento.style.display = eLocacao ? '' : 'none';
         return;
       }
 
@@ -221,6 +245,14 @@
 
       if (!passaProfessor) { evento.style.display = 'none'; return; }
 
+      let passaHorario = true;
+      if (filtraHorario) {
+        const horaTurma = marginTopParaHora(evento.style.marginTop);
+        passaHorario = horaTurma !== null && horasSelecionadas.includes(horaTurma);
+      }
+
+      if (!passaHorario) { evento.style.display = 'none'; return; }
+
       let deveExibir = false;
       if (!mostrarComVaga && !mostrarExperimental) {
         deveExibir = true;
@@ -231,35 +263,79 @@
 
       if (deveExibir) {
         evento.style.display = '';
-        adicionarBadge(conteudo, vagasFixas, vagasDia, faltantes);
-        if (vagasFixas > 0 || vagasDia > 0) comVaga++;
-        if (temExperimental) experimentais++;
+        adicionarBadge(conteudo, vagasFixas, vagasDia);
       } else {
         evento.style.display = 'none';
-        if (vagasFixas === 0 && vagasDia === 0) semVaga++;
       }
     });
-
-    atualizarContadores(comVaga, semVaga, experimentais, locacoesDisp);
   }
 
-  function atualizarContadores(comVaga, semVaga, experimentais, locacoesDisp = 0) {
-    const el = document.getElementById('rf-contadores');
-    if (!el) return;
-    el.innerHTML = `
-      <div style="display:flex;justify-content:space-between;padding:3px 0;border-bottom:1px solid rgba(255,255,255,0.1)">
-        <span>✅ Com vaga</span><b>${comVaga}</b>
-      </div>
-      <div style="display:flex;justify-content:space-between;padding:3px 0;border-bottom:1px solid rgba(255,255,255,0.1)">
-        <span>🔴 Lotadas</span><b>${semVaga}</b>
-      </div>
-      <div style="display:flex;justify-content:space-between;padding:3px 0;border-bottom:1px solid rgba(255,255,255,0.1)">
-        <span>🧪 Alunos Experimentais</span><b>${experimentais}</b>
-      </div>
-      <div style="display:flex;justify-content:space-between;padding:3px 0">
-        <span>🤑 Disp. locação</span><b>${locacoesDisp}</b>
-      </div>
+  // ─── Ícone flutuante e draggável ──────────────────────────────
+  function criarIcone() {
+    const antigo = document.getElementById('royal-filter-icone');
+    if (antigo) antigo.remove();
+
+    const icone = document.createElement('div');
+    icone.id = 'royal-filter-icone';
+    icone.style.cssText = `
+      position: fixed; top: 100px; right: 16px;
+      width: 56px; height: 56px;
+      background: #1e2d3d; border: 2px solid #3d5a73;
+      border-radius: 50%;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 26px;
+      box-shadow: 0 4px 14px rgba(0,0,0,0.5);
+      z-index: 100000;
+      cursor: grab; user-select: none;
     `;
+    icone.textContent = '👑';
+    document.body.appendChild(icone);
+
+    let arrastando = false, moveu = false, startX, startY, startLeft, startTop;
+
+    icone.addEventListener('mousedown', (e) => {
+      arrastando = true;
+      moveu = false;
+      startX = e.clientX;
+      startY = e.clientY;
+      const rect = icone.getBoundingClientRect();
+      startLeft = rect.left;
+      startTop  = rect.top;
+      icone.style.cursor = 'grabbing';
+      e.preventDefault();
+    });
+
+    document.addEventListener('mousemove', (e) => {
+      if (!arrastando) return;
+      const dx = e.clientX - startX;
+      const dy = e.clientY - startY;
+      if (Math.abs(dx) > 3 || Math.abs(dy) > 3) moveu = true;
+      icone.style.right = 'auto';
+      icone.style.left  = `${startLeft + dx}px`;
+      icone.style.top   = `${startTop  + dy}px`;
+    });
+
+    document.addEventListener('mouseup', () => {
+      if (arrastando && !moveu) {
+        icone.style.display = 'none';
+        if (!painelMontado) {
+          montarPainel();
+          painelMontado = true;
+        } else {
+          const painel = document.getElementById('royal-filter-painel');
+          if (painel) painel.style.display = '';
+        }
+      }
+      arrastando = false;
+      icone.style.cursor = 'grab';
+    });
+
+    return icone;
+  }
+
+  function mostrarIcone() {
+    const icone = document.getElementById('royal-filter-icone');
+    if (icone) icone.style.display = 'flex';
   }
 
   function montarPainel() {
@@ -267,7 +343,6 @@
     if (antigo) antigo.remove();
 
     const professores = coletarProfessores();
-    const data = getDataFormatada();
 
     const painel = document.createElement('div');
     painel.id = 'royal-filter-painel';
@@ -283,10 +358,13 @@
       cursor: default;
     `;
 
+    // Botão de minimizar em dourado, com texto pequeno, para destacar bem
+    // contra o fundo escuro do painel (#1e2d3d).
     const header = `
-      <div id="rf-header" style="display:flex;align-items:center;justify-content:space-between;cursor:grab;user-select:none;padding-bottom:8px">
+      <div id="rf-header" style="position:relative;display:flex;align-items:center;justify-content:center;cursor:grab;user-select:none;padding-bottom:8px">
         <span style="font-size:15px;font-weight:700;letter-spacing:1px">👑 Royal Filter</span>
         <button id="rf-btn-minimizar" style="
+          position:absolute;right:0;top:50%;transform:translateY(-50%);
           background:none;border:1px solid #3d5a73;color:#95a5a6;
           border-radius:5px;padding:1px 7px;cursor:pointer;font-size:11px;
           line-height:1.4;flex-shrink:0;
@@ -324,9 +402,9 @@
           <button id="rf-btn-toggle-profs" style="
             background:none;border:1px solid #3d5a73;color:#95a5a6;
             border-radius:5px;padding:2px 7px;cursor:pointer;font-size:11px;
-          ">▲ Ocultar</button>
+          ">▼ Mostrar</button>
         </div>
-        <div id="rf-lista-profs">${professores.map(prof => `
+        <div id="rf-lista-profs" style="display:none">${professores.map(prof => `
           <label style="display:flex;align-items:center;gap:8px;margin-bottom:6px;cursor:pointer">
             <input type="checkbox" class="rf-chk-prof" value="${prof}"
                    style="accent-color:#2980b9;width:14px;height:14px">
@@ -336,11 +414,23 @@
 
         <hr style="border-color:rgba(255,255,255,0.1);margin:12px 0">
 
-        <div style="font-size:11px;font-weight:600;text-transform:uppercase;
-                    color:#95a5a6;margin-bottom:8px;letter-spacing:.5px">
-          RESUMO DO DIA ${data}
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
+          <div style="font-size:11px;font-weight:600;text-transform:uppercase;
+                      color:#95a5a6;letter-spacing:.5px">Por Horário</div>
+          <button id="rf-btn-toggle-horas" style="
+            background:none;border:1px solid #3d5a73;color:#95a5a6;
+            border-radius:5px;padding:2px 7px;cursor:pointer;font-size:11px;
+          ">▼ Mostrar</button>
         </div>
-        <div id="rf-contadores" style="font-size:12px;line-height:1.8">—</div>
+        <div id="rf-lista-horas" style="display:none;grid-template-columns:repeat(5, 1fr);gap:5px;">
+          ${Array.from({length: 17}, (_, i) => i + 6).map(h => `
+            <button type="button" class="rf-pill-hora" data-hora="${h}" style="
+              background:#2c3e50;border:1px solid #3d5a73;color:#ecf0f1;
+              border-radius:14px;padding:5px 0;cursor:pointer;font-size:11px;font-weight:bold;
+              text-align:center;
+            ">${h}h</button>
+          `).join('')}
+        </div>
 
         <hr style="border-color:rgba(255,255,255,0.1);margin:12px 0">
 
@@ -408,23 +498,12 @@
     nomeEl.style.color = '#00f5ff';
     nomeEl.style.textShadow = '0 0 6px #00f5ff, 0 0 12px #00f5ff, 0 0 20px #00c8d4';
 
-    // ─── Minimizar / Expandir ─────────────────────────────────
+    // ─── Minimizar painel inteiro / volta para ícone ──────────
     const btnMinimizar = document.getElementById('rf-btn-minimizar');
-    const rfSubtitulo  = document.getElementById('rf-subtitulo');
-    const rfHrHeader   = document.getElementById('rf-hr-header');
-    const rfCorpo      = document.getElementById('rf-corpo');
-    let minimizado = false;
-
     btnMinimizar.onclick = (e) => {
       e.stopPropagation();
-      minimizado = !minimizado;
-      rfCorpo.style.display     = minimizado ? 'none' : '';
-      rfSubtitulo.style.display = minimizado ? 'none' : '';
-      rfHrHeader.style.display  = minimizado ? 'none' : '';
-      painel.style.overflowY    = minimizado ? 'hidden' : 'auto';
-      painel.style.maxHeight    = minimizado ? 'none' : '85vh';
-      painel.style.padding      = minimizado ? '10px 16px' : '16px';
-      btnMinimizar.textContent  = minimizado ? '▲' : '▼';
+      painel.style.display = 'none';
+      mostrarIcone();
     };
 
     // ─── Arrastar painel ──────────────────────────────────────
@@ -457,20 +536,44 @@
       rfHeader.style.cursor = 'grab';
     });
 
-    // ─── Toggle lista de professores ──────────────────────────
+    // ─── Toggle lista de professores (minimizada por padrão) ──
     const listaProfs = document.getElementById('rf-lista-profs');
     const btnToggle  = document.getElementById('rf-btn-toggle-profs');
-    let profsVisiveis = true;
+    let profsVisiveis = false;
     btnToggle.onclick = () => {
       profsVisiveis = !profsVisiveis;
       listaProfs.style.display = profsVisiveis ? '' : 'none';
       btnToggle.textContent = profsVisiveis ? '▲ Ocultar' : '▼ Mostrar';
     };
 
+    // ─── Toggle lista de horários (minimizada por padrão) ─────
+    const listaHoras = document.getElementById('rf-lista-horas');
+    const btnToggleHoras = document.getElementById('rf-btn-toggle-horas');
+    let horasVisiveis = false;
+    btnToggleHoras.onclick = () => {
+      horasVisiveis = !horasVisiveis;
+      listaHoras.style.display = horasVisiveis ? 'grid' : 'none';
+      btnToggleHoras.textContent = horasVisiveis ? '▲ Ocultar' : '▼ Mostrar';
+    };
+
+    // ─── Seleção múltipla de pílulas de horário ────────────────
+    painel.querySelectorAll('.rf-pill-hora').forEach(pill => {
+      pill.onclick = () => {
+        const ativa = pill.classList.toggle('ativa');
+        pill.style.background = ativa ? '#2980b9' : '#2c3e50';
+        pill.style.borderColor = ativa ? '#2980b9' : '#3d5a73';
+      };
+    });
+
     document.getElementById('rf-btn-aplicar').onclick = aplicarFiltros;
     document.getElementById('rf-btn-restaurar').onclick = () => {
       restaurarTudo();
       painel.querySelectorAll('input[type=checkbox]').forEach(c => c.checked = false);
+      painel.querySelectorAll('.rf-pill-hora.ativa').forEach(pill => {
+        pill.classList.remove('ativa');
+        pill.style.background = '#2c3e50';
+        pill.style.borderColor = '#3d5a73';
+      });
     };
 
     // ─── Relatório ────────────────────────────────────────────
@@ -499,6 +602,6 @@
   }
 
   salvarEstadoOriginal();
-  montarPainel();
+  criarIcone();
 
 })();
